@@ -1,0 +1,47 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: netscope
+      POSTGRES_PASSWORD: netscope
+      POSTGRES_DB: netscope
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5434:5432"   # avoid Windows PostgreSQL on 5432 and Job Tracker on 5433
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U netscope"]
+      interval: 3s
+      retries: 20
+
+  api:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgresql://netscope:netscope@db:5432/netscope
+      SEED_DEMO: "true"
+      FAILURE_THRESHOLD: "3"
+      RECOVERY_THRESHOLD: "2"
+      RETENTION_DAYS: "30"
+      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  web:
+    build: ./frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  # A service you can break on purpose: ./scripts/chaos.sh down
+  flaky:
+    build: ./demo/flaky
+    ports:
+      - "8081:8080"
+    restart: unless-stopped
+
+volumes:
+  pgdata:
